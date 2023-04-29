@@ -96,7 +96,7 @@ async def main() -> None:
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, f"https://{DOMAIN}", PORT)
+    site = web.TCPSite(runner, DOMAIN, PORT)
     await site.start()
 
 
