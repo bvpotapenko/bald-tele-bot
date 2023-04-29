@@ -17,6 +17,7 @@ if __version_info__ < (20, 0, 0, "alpha", 1):
 
 import os
 import asyncio
+import secrets
 from dotenv import load_dotenv
 from telegram import ForceReply, Update
 from telegram.ext import (
@@ -43,6 +44,7 @@ logging.info('Logs are activated')
 logging.error('Test logging an error (no error, chill)')
 
 load_dotenv()
+shutdown_event = asyncio.Event()
 
 # /start comand handler
 async def start(update: Update, context: CallbackContext) -> None:
@@ -101,16 +103,34 @@ async def main() -> None:
 
     async with application:  # Calls `initialize` and `shutdown`
         await application.start()
+        secret_token = secrets.token_hex(16)  # Generates a random 32-character long hexadecimal string
         await application.updater.start_webhook(listen="0.0.0.0",
                                                 port=port,
-                                                secret_token=api_key,
-                                                webhook_url=f"https://{domain}:{port}")
-        # Add some logic that keeps the event loop running until you want to shutdown
+                                                secret_token=secret_token,
+                                                webhook_url=f"https://{domain}:{port}/{secret_token}")
+        # Wait for the shutdown_event to be set
+        await shutdown_event.wait()
+
         # Stop the other asyncio frameworks here
         await application.updater.stop()
         await application.stop()
 
+async def stop_application():
+    await application.stop()
+    shutdown_event.set()
+
+async def main_wrapper():
+    main_task = asyncio.create_task(main())
+
+    # Here, you can add other asyncio tasks or frameworks that you want to run alongside the bot
+
+    # Run the stop_application() coroutine when you want to stop the application
+    # For example, you can run it after some time, when a specific condition is met, or when you receive a signal
+    # In this example, we'll stop the application after 60 seconds
+    asyncio.get_event_loop().call_later(60, asyncio.ensure_future, stop_application())
+
+    # Run the main_task until it's complete
+    await main_task
+
 if __name__ == "__main__":
-    logger.info('READY TO ROLL')
-    asyncio.set_event_loop(asyncio.new_event_loop())
-    asyncio.run(main())
+    asyncio.run(main_wrapper())
