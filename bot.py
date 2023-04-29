@@ -33,6 +33,7 @@ WEBHOOK_URL = f"https://{DOMAIN}:{PORT}"
 
 
 async def set_webhook(session: ClientSession) -> None:
+    delete_webhook(session)
     payload = {
         'url': WEBHOOK_URL,
     }
@@ -80,6 +81,13 @@ async def on_cleanup(app) -> None:
     await app['session'].close()
 
 
+async def delete_webhook(session: ClientSession) -> None:
+    async with session.post(f"{TELEGRAM_API_URL}/deleteWebhook") as resp:
+        result = await resp.json()
+        if not result['ok']:
+            logging.error(f"Failed to delete webhook: {result['description']}")
+            
+
 async def main() -> None:
     app = web.Application()
     app.router.add_post("/", webhook_handler)
@@ -90,8 +98,16 @@ async def main() -> None:
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
-    logging.info('MAIN STARTED')
 
+    # Create an Event to wait for in order to keep the server running
+    # stop_event = asyncio.Event()
+
+    # try:
+    #     await stop_event.wait()
+    # except KeyboardInterrupt:
+    #     pass
+    # finally:
+    #     await runner.cleanup()
 
 if __name__ == "__main__":
     logging.info('STARTING MAIN()')

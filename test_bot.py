@@ -1,58 +1,52 @@
-from unittest import IsolatedAsyncioTestCase
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, ANY
-from telegram import ForceReply, Update, Message, Chat, User
-from telegram.ext import CallbackContext
-from bot import start, help_command, echo
-import datetime
+import unittest
+from unittest.mock import MagicMock
+from aiohttp import web
+from aiohttp.test_utils import TestServer, TestClient, unittest_run_loop
+import bot
 
 
-class TestCallbackContext(CallbackContext):
-    @property
-    def bot(self) -> ANY:
-        return self._bot
+class TestBot(unittest.TestCase):
 
-    @bot.setter
-    def bot(self, value: ANY) -> None:
-        self._bot = value
+    def setUp(self):
+        self.app = web.Application()
+        self.app.router.add_post("/", bot.webhook_handler)
+        self.app.on_startup.append(bot.on_startup)
+        self.app.on_cleanup.append(bot.on_cleanup)
+        self.server = TestServer(self.app)
+        self.client = TestClient(self.server)
+
+    async def test_webhook_handler(self):
+        update = {
+            'message': {
+                'chat': {'id': 12345},
+                'text': '/start',
+                'from': {'first_name': 'John'}
+            }
+        }
+
+        bot.handle_update = MagicMock(return_value=None)
+
+        async with self.client.post("/", json=update) as resp:
+            self.assertEqual(resp.status, 200)
+            result = await resp.json()
+            self.assertEqual(result, {'status': 'ok'})
+
+        bot.handle_update.assert_called_once_with(update, self.app['session'])
+
+    async def test_handle_update(self):
+        update = {
+            'message': {
+                'chat': {'id': 12345},
+                'text': '/start',
+                'from': {'first_name': 'John'}
+            }
+        }
+        session = MagicMock()
+
+        bot.send_message = MagicMock(return_value=None)
+        await bot.handle_update(update, session)
+        bot.send_message.assert_called_once_with(12345, 'At your service, sir <b>John</b>!', session)
 
 
-class TestBot(IsolatedAsyncioTestCase):
-    async def asyncSetUp(self):
-        self.from_user = User(id=123456789, first_name="John", last_name="Doe", is_bot=False)
-        self.chat = Chat(id=123456789, type="private")
-        self.context = TestCallbackContext(None)
-        self.context.bot = AsyncMock()
-        self.message = MagicMock(spec=Message)
-        self.message.from_user = self.from_user
-        self.message.chat = self.chat
-        self.message.reply_html = AsyncMock()
-        self.message.reply_text = AsyncMock()
-
-    def _create_update(self, text: str, message: Message) -> Update:
-        # message = MagicMock(spec=Message)
-        # message.from_user = self.from_user
-        # message.chat = self.chat
-        message.text = text
-        # update = Update(update_id=1, message=message)
-        return Update(update_id=1, message=message)
-
-    async def test_start(self):
-        update = self._create_update("/start", self.message)
-        await start(update, self.context)
-
-        expected_text = f"At your service, sir {self.from_user.mention_html()}!"
-        self.message.reply_html.assert_called_once_with(
-            expected_text,
-            reply_markup=ForceReply(selective=True),
-        )
-
-    async def test_echo(self):
-        update = self._create_update("test", self.message)
-        await echo(update, self.context)
-        self.message.reply_text.assert_called_once_with("test")
-
-    async def test_help_command(self):
-        update = self._create_update("/help", self.message)
-        await help_command(update, self.context)
-        self.message.reply_text.assert_called_once_with("Help!")
+if __name__ == '__main__':
+    unittest.main()
