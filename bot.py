@@ -29,10 +29,18 @@ from telegram.ext import (
 )
 
 # Enable logging
-logging.basicConfig(stream=sys.stdout,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.DEBUG
+stream_handler = logging.StreamHandler()
+stream_handler.setLevel(logging.INFO)
+
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                    datefmt='%H:%M:%S', 
+                    level=logging.DEBUG,
+                    handlers=[logging.FileHandler('./logs/runtime.log'), 
+                            stream_handler]
 )
 logger = logging.getLogger(__name__)
+logging.info('Logs are activated')
+logging.error('Test logging an error (no error, chill)')
 
 load_dotenv()
 
@@ -81,16 +89,28 @@ async def main() -> None:
 
     # Set up the webhook
     logger.info('Running the webhook')
-    await application.run_webhook(listen="0.0.0.0", 
-                                  port=port, 
-                                  secret_token=api_key,
-                                  webhook_url=f"https://{domain}:{port}"
-                                  )
-    logger.info('webhook is running')
+    # await application.run_webhook(listen="0.0.0.0", 
+    #                               port=port, 
+    #                               secret_token=api_key,
+    #                               webhook_url=f"https://{domain}:{port}"
+    #                               )
+    # logger.info('webhook is running')
 
-    # Run the bot until you press Ctrl-C
-    await application.idle()
+    # # Run the bot until you press Ctrl-C
+    # await application.idle()
+
+    async with application:  # Calls `initialize` and `shutdown`
+        await application.start()
+        await application.updater.start_webhook(listen="0.0.0.0",
+                                                port=port,
+                                                secret_token=api_key,
+                                                webhook_url=f"https://{domain}:{port}")
+        # Add some logic that keeps the event loop running until you want to shutdown
+        # Stop the other asyncio frameworks here
+        await application.updater.stop()
+        await application.stop()
 
 if __name__ == "__main__":
     logger.info('READY TO ROLL')
-    asyncio.get_event_loop().run_until_complete(main())
+    asyncio.set_event_loop(asyncio.new_event_loop())
+    asyncio.run(main())
