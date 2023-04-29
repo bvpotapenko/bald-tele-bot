@@ -33,7 +33,7 @@ WEBHOOK_URL = f"https://{DOMAIN}:{PORT}"
 
 
 async def set_webhook(session: ClientSession) -> None:
-    delete_webhook(session)
+    await delete_webhook(session)
     payload = {
         'url': WEBHOOK_URL,
     }
@@ -96,18 +96,9 @@ async def main() -> None:
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    site = web.TCPSite(runner, f"https://{DOMAIN}", PORT)
     await site.start()
 
-    # Create an Event to wait for in order to keep the server running
-    # stop_event = asyncio.Event()
-
-    # try:
-    #     await stop_event.wait()
-    # except KeyboardInterrupt:
-    #     pass
-    # finally:
-    #     await runner.cleanup()
 
 if __name__ == "__main__":
     logging.info('STARTING MAIN()')
