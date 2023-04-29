@@ -1,4 +1,4 @@
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 from telegram import Update, Message, Chat, User
@@ -7,66 +7,55 @@ from bot import start, help_command, echo
 from typing import Any
 import datetime
 
+
 class TestCallbackContext(CallbackContext):
     @property
     def bot(self) -> Any:
         return self._bot
-    
+
     @bot.setter
     def bot(self, value: Any) -> None:
         self._bot = value
 
-class TestBot(TestCase):
-    def setUp(self):
+
+class TestBot(IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
         self.from_user = User(id=123456789, first_name="John", last_name="Doe", is_bot=False)
         self.chat = Chat(id=123456789, type="private")
         self.context = TestCallbackContext(None)
-        self.context.bot = AsyncMock() # Add this line to mock the bot
-        self.message = MagicMock(spec=Message, reply_html=self._mock_reply_html)
+        self.context.bot = AsyncMock()
+        self.message = MagicMock(spec=Message)
+        self.message.from_user = self.from_user
+        self.message.chat = self.chat
+        self.message.reply_html = AsyncMock()
+        self.message.reply_text = AsyncMock()
 
-    def _create_message(self, text):
-        message = Message(
-            message_id=1,
-            from_user=self.from_user,
-            chat=self.chat,
-            date=None,
-            text=text
-        )
-        return Update(update_id=1, message=message)
-    
     def _create_update(self, text: str) -> Update:
-        message = Message(
-            message_id=1,
-            from_user=self.from_user,
-            date=datetime.datetime.now(),
-            chat=self.chat,
-            text=text,
-        )
-        return Update(update_id=1, message=message)
-    
-    def _mock_reply_html(self, *args, **kwargs):
-        pass
+        message = MagicMock(spec=Message)
+        message.from_user = self.from_user
+        message.chat = self.chat
+        message.text = text
+        update = Update(update_id=1, message=message)
+        update.message = message  # Add this line
+        return update
 
-
-    def test_start(self):
+    async def test_start(self):
         update = self._create_update("/start")
+        await start(update, self.context)
 
-        # Create a simple async function to run the test
-        async def run_test():
-            await start(update, self.context)
+        expected_text = f"At your service, sir {self.from_user.mention_html()}!"
+        self.message.reply_html.assert_called_once_with(
+            text=expected_text,
+            reply_markup=Any,
+            parse_mode="HTML"
+        )
 
-            expected_text = f"At your service, sir {self.from_user.mention_html()}!"
-            self.context.bot.send_message_html.assert_called_once_with(
-                chat_id=self.chat.id, text=expected_text, parse_mode="HTML"
-            )
-
-        # Run the async test function
-        asyncio.run(run_test())
-
-    def test_echo(self):
+    async def test_echo(self):
         update = self._create_update("test")
-        echo(update, self.context)
+        await echo(update, self.context)
+        self.message.reply_text.assert_called_once_with(text="test")
 
-    def test_help_command(self):
+    async def test_help_command(self):
         update = self._create_update("/help")
-        help_command(update, self.context)
+        await help_command(update, self.context)
+        self.message.reply_text.assert_called_once_with(text="Help!")
