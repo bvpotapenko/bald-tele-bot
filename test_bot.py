@@ -1,26 +1,41 @@
+import os
+import asyncio
 import unittest
-from io import StringIO
-from unittest.mock import MagicMock, patch
-
-# Import the start function from bot.py
-from bot import start
+from unittest.mock import patch
+from telegram import Update, User, Message, Chat
+from telegram.ext import ContextTypes
+from bot import start, help_command, echo
 
 # Create a test class for our bot
 class TestBot(unittest.TestCase):
-    # Test the start command
-    def test_start_command(self):
-        # Create a mock update and context
-        update = MagicMock()
-        context = MagicMock()
+    
+    def setUp(self):
+        self.update = Update(update_id=1)
+        self.context = ContextTypes.DEFAULT_TYPE()
+        self.update.message = Message(
+            message_id=1,
+            from_user=User(id=1, first_name="Test", is_bot=False),
+            chat=Chat(id=1, type="private"),
+            text="",
+        )
 
-        # Redirect the standard output
-        with patch("sys.stdout", new=StringIO()) as fake_out:
-            # Call the start function with the mock update and context
-            start(update, context)
+    @patch("telegram.Message.reply_html")
+    def test_start(self, mock_reply_html):
+        self.update.message.text = "/start"
+        asyncio.run(start(self.update, self.context))
+        mock_reply_html.assert_called()
 
-            # Check if the expected message is sent to the user
-            self.assertIn("At your service, sir.", update.message.reply_text.call_args.args)
+    @patch("telegram.Message.reply_text")
+    def test_help_command(self, mock_reply_text):
+        self.update.message.text = "/help"
+        asyncio.run(help_command(self.update, self.context))
+        mock_reply_text.assert_called()
 
-# Run the tests
+    @patch("telegram.Message.reply_text")
+    def test_echo(self, mock_reply_text):
+        self.update.message.text = "test"
+        asyncio.run(echo(self.update, self.context))
+        mock_reply_text.assert_called_with("test")
+
 if __name__ == "__main__":
     unittest.main()
