@@ -39,6 +39,7 @@ load_dotenv()
 # /start comand handler
 async def start(update: Update, context: CallbackContext) -> None:
     logger.info('Start command received')
+    print('Start command received')
     # Send a message to the user when the /start command is issued
     user = update.effective_user
     await update.message.reply_html( 
@@ -48,6 +49,7 @@ async def start(update: Update, context: CallbackContext) -> None:
     
 async def help_command(update: Update, context: CallbackContext) -> None:
     logger.info('Help command received')
+    print('Help command received')
     """Send a message when the command /help is issued."""
     await update.message.reply_text("Help!")
 
@@ -57,6 +59,7 @@ async def echo(update: Update, context: CallbackContext) -> None:
 
 async def main() -> None:
     logger.info('Started main()')
+    print('Started main()')
     # Get the Telegram bot API key from the environment variable
     api_key = os.environ.get("TELEGRAM_BOT_TOKEN")
     port = int(os.environ.get("PORT"))
@@ -77,21 +80,17 @@ async def main() -> None:
     logger.info('Three handlers are added')
 
     # Set up the webhook
-    await application.set_webhook(url=f"https://{domain}:{port}/{api_key}")
-    logger.info('webhook is set')
-
-    # Start the webhook server
-    logger.info('Starting webhook')
-    await application.start_webhook(
-        listen="0.0.0.0",
-        port=port,
-        url_path=api_key,
-        webhook_url=f"https://{domain}:{port}/{api_key}",
-    )
-
+    logger.info('Running the webhook')
+    await application.run_webhook(listen="0.0.0.0", 
+                                  port=port, 
+                                  secret_token=api_key,
+                                  webhook_url=f"https://{domain}:{port}"
+                                  )
+    logger.info('webhook is running')
 
     # Run the bot until you press Ctrl-C
     await application.idle()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    logger.info('READY TO ROLL')
+    asyncio.get_event_loop().run_until_complete(main())

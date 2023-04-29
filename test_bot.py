@@ -1,20 +1,19 @@
 from unittest import IsolatedAsyncioTestCase
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
-from telegram import Update, Message, Chat, User
+from unittest.mock import AsyncMock, MagicMock, ANY
+from telegram import ForceReply, Update, Message, Chat, User
 from telegram.ext import CallbackContext
 from bot import start, help_command, echo
-from typing import Any
 import datetime
 
 
 class TestCallbackContext(CallbackContext):
     @property
-    def bot(self) -> Any:
+    def bot(self) -> ANY:
         return self._bot
 
     @bot.setter
-    def bot(self, value: Any) -> None:
+    def bot(self, value: ANY) -> None:
         self._bot = value
 
 
@@ -30,32 +29,30 @@ class TestBot(IsolatedAsyncioTestCase):
         self.message.reply_html = AsyncMock()
         self.message.reply_text = AsyncMock()
 
-    def _create_update(self, text: str) -> Update:
-        message = MagicMock(spec=Message)
-        message.from_user = self.from_user
-        message.chat = self.chat
+    def _create_update(self, text: str, message: Message) -> Update:
+        # message = MagicMock(spec=Message)
+        # message.from_user = self.from_user
+        # message.chat = self.chat
         message.text = text
-        update = Update(update_id=1, message=message)
-        update.message = message  # Add this line
-        return update
+        # update = Update(update_id=1, message=message)
+        return Update(update_id=1, message=message)
 
     async def test_start(self):
-        update = self._create_update("/start")
+        update = self._create_update("/start", self.message)
         await start(update, self.context)
 
         expected_text = f"At your service, sir {self.from_user.mention_html()}!"
         self.message.reply_html.assert_called_once_with(
-            text=expected_text,
-            reply_markup=Any,
-            parse_mode="HTML"
+            expected_text,
+            reply_markup=ForceReply(selective=True),
         )
 
     async def test_echo(self):
-        update = self._create_update("test")
+        update = self._create_update("test", self.message)
         await echo(update, self.context)
-        self.message.reply_text.assert_called_once_with(text="test")
+        self.message.reply_text.assert_called_once_with("test")
 
     async def test_help_command(self):
-        update = self._create_update("/help")
+        update = self._create_update("/help", self.message)
         await help_command(update, self.context)
-        self.message.reply_text.assert_called_once_with(text="Help!")
+        self.message.reply_text.assert_called_once_with("Help!")
