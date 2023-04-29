@@ -4,15 +4,9 @@ import os
 import asyncio
 import secrets
 from dotenv import load_dotenv
-from telegram import ForceReply, Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
-    CallbackContext
-)
+from typing import Any, Dict
+from aiohttp import ClientSession, web
+from html import escape
 
 # Enable logging
 stream_handler = logging.StreamHandler()
@@ -25,97 +19,81 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
                             stream_handler]
 )
 logger = logging.getLogger(__name__)
-logging.info('Logs are activated')
+logging.info('Logs are activated for Vercel')
 logging.error('Test logging an error (no error, chill)')
 
 load_dotenv()
-shutdown_event = asyncio.Event()
 
-# /start comand handler
-async def start(update: Update, context: CallbackContext) -> None:
-    logger.info('Start command received')
-    print('Start command received')
-    # Send a message to the user when the /start command is issued
-    user = update.effective_user
-    await update.message.reply_html( 
-        rf"At your service, sir {user.mention_html()}!",
-        reply_markup=ForceReply(selective=True),
-        )
-    
-async def help_command(update: Update, context: CallbackContext) -> None:
-    logger.info('Help command received')
-    print('Help command received')
-    """Send a message when the command /help is issued."""
-    await update.message.reply_text("Help!")
+API_KEY = os.environ.get("TELEGRAM_BOT_TOKEN")
+PORT = int(os.environ.get("PORT"))
+DOMAIN = os.environ.get("DOMAIN")
 
-async def echo(update: Update, context: CallbackContext) -> None:
-    """Echo the user message."""
-    await update.message.reply_text(update.message.text)
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{API_KEY}"
+WEBHOOK_URL = f"https://{DOMAIN}:{PORT}"
+
+
+async def set_webhook(session: ClientSession) -> None:
+    payload = {
+        'url': WEBHOOK_URL,
+    }
+    async with session.post(f"{TELEGRAM_API_URL}/setWebhook", json=payload) as resp:
+        result = await resp.json()
+        if not result['ok']:
+            logging.error(f"Failed to set webhook: {result['description']}")
+
+
+async def send_message(chat_id: int, text: str, session: ClientSession) -> None:
+    payload = {
+        'chat_id': chat_id,
+        'text': text,
+        'parse_mode': 'HTML',
+    }
+    async with session.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload) as resp:
+        await resp.json()
+
+
+async def handle_update(update: Dict[str, Any], session: ClientSession) -> None:
+    if 'message' in update:
+        message = update['message']
+        text = message['text']
+        chat_id = message['chat']['id']
+
+        if text == '/start':
+            user_name = escape(message['from']['first_name'])
+            await send_message(chat_id, f"At your service, sir <b>{user_name}</b>!", session)
+        else:
+            await send_message(chat_id, text, session)
+
+
+async def webhook_handler(request) -> Any:
+    update = await request.json()
+    await handle_update(update, request.app['session'])
+    return {'status': 'ok'}
+
+
+async def on_startup(app) -> None:
+    app['session'] = session = ClientSession()
+    await set_webhook(session)
+
+
+async def on_cleanup(app) -> None:
+    await app['session'].close()
+
 
 async def main() -> None:
-    logger.info('Started main()')
-    print('Started main()')
-    # Get the Telegram bot API key from the environment variable
-    api_key = os.environ.get("TELEGRAM_BOT_TOKEN")
-    port = int(os.environ.get("PORT"))
-    # ssl_key = os.environ.get('private.key')
-    # ssl_cert = os.environ.get('cert.pem')
-    domain = os.environ.get("DOMAI")
+    app = web.Application()
+    app.router.add_post("/", webhook_handler)
+    app.on_startup.append(on_startup)
+    app.on_cleanup.append(on_cleanup)
 
-    # Create the Application and pass it your bot's token.
-    application = Application.builder().token(api_key).build()
-    logger.info('Application created')
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+    logging.info('MAIN STARTED')
 
-    # on different commands - answer in Telegram
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-
-    # on non command i.e message - echo the message on Telegram
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
-    logger.info('Three handlers are added')
-
-    # Set up the webhook
-    logger.info('Running the webhook')
-    # await application.run_webhook(listen="0.0.0.0", 
-    #                               port=port, 
-    #                               secret_token=api_key,
-    #                               webhook_url=f"https://{domain}:{port}"
-    #                               )
-    # logger.info('webhook is running')
-
-    # # Run the bot until you press Ctrl-C
-    # await application.idle()
-
-    async with application:  # Calls `initialize` and `shutdown`
-        await application.start()
-        secret_token = secrets.token_hex(16)  # Generates a random 32-character long hexadecimal string
-        await application.updater.start_webhook(listen="0.0.0.0",
-                                                port=port,
-                                                secret_token=secret_token,
-                                                webhook_url=f"https://{domain}:{port}/{secret_token}")
-        # Wait for the shutdown_event to be set
-        await shutdown_event.wait()
-
-        # Stop the other asyncio frameworks here
-        await application.updater.stop()
-        await application.stop()
-
-async def stop_application():
-    await application.stop()
-    shutdown_event.set()
-
-async def main_wrapper():
-    main_task = asyncio.create_task(main())
-
-    # Here, you can add other asyncio tasks or frameworks that you want to run alongside the bot
-
-    # Run the stop_application() coroutine when you want to stop the application
-    # For example, you can run it after some time, when a specific condition is met, or when you receive a signal
-    # In this example, we'll stop the application after 60 seconds
-    asyncio.get_event_loop().call_later(60, asyncio.ensure_future, stop_application())
-
-    # Run the main_task until it's complete
-    await main_task
 
 if __name__ == "__main__":
-    asyncio.run(main_wrapper())
+    logging.info('STARTING MAIN()')
+    asyncio.get_event_loop().run_until_complete(main())
+
