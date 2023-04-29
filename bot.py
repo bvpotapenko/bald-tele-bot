@@ -24,6 +24,7 @@ from telegram.ext import (
     ContextTypes,
     MessageHandler,
     filters,
+    CallbackContext
 )
 
 # Enable logging
@@ -35,7 +36,8 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # /start comand handler
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def start(update: Update, context: CallbackContext) -> None:
+    logger.info('Start command received')
     # Send a message to the user when the /start command is issued
     user = update.effective_user
     await update.message.reply_html( 
@@ -43,15 +45,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         reply_markup=ForceReply(selective=True),
         )
     
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def help_command(update: Update, context: CallbackContext) -> None:
+    logger.info('Help command received')
     """Send a message when the command /help is issued."""
     await update.message.reply_text("Help!")
 
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def echo(update: Update, context: CallbackContext) -> None:
     """Echo the user message."""
     await update.message.reply_text(update.message.text)
 
 async def main() -> None:
+    logger.info('Started main()')
     # Get the Telegram bot API key from the environment variable
     api_key = os.environ.get("TELEGRAM_BOT_TOKEN")
     port = int(os.environ.get("PORT"))
@@ -61,6 +65,7 @@ async def main() -> None:
 
     # Create the Application and pass it your bot's token.
     application = Application.builder().token(api_key).build()
+    logger.info('Application created')
 
     # on different commands - answer in Telegram
     application.add_handler(CommandHandler("start", start))
@@ -68,17 +73,21 @@ async def main() -> None:
 
     # on non command i.e message - echo the message on Telegram
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    logger.info('Three handlers are added')
 
     # Set up the webhook
     await application.set_webhook(url=f"https://{domain}:{port}/{api_key}")
+    logger.info('webhook is set')
 
     # Start the webhook server
+    logger.info('Starting webhook')
     await application.start_webhook(
         listen="0.0.0.0",
         port=port,
         url_path=api_key,
         webhook_url=f"https://{domain}:{port}/{api_key}",
     )
+
 
     # Run the bot until you press Ctrl-C
     await application.idle()
