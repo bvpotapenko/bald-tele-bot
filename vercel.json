@@ -1,9 +1,12 @@
 {
     "version": 2,
     "builds": [
-        {
+      {
         "src": "bot.py",
-        "use": "@vercel/python@1.9.1"
+        "use": "@vercel/python",
+        "config": {
+          "pythonVersion": "3.9"
         }
+      }
     ]
-}  
+  }
